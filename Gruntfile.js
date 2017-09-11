@@ -13,24 +13,19 @@ module.exports = function (grunt) {
 
 		/*
 		Concatenate & Minify Javascript files
-		@author: https://github.com/gruntjs/grunt-contrib-concat
 		@author: https://github.com/gruntjs/grunt-contrib-uglify
 		 */
-		concat: {
-			options: {
-				separator: ';'
-			},
-			dist: {
-				src: ['assets/public/vendor/*/*.js', 'assets/public/js/public.js'],
-				dest: 'assets/public/js/public-dist.js'
-			}
-		},
-
 		uglify: {
-			global: {
-				files: {
-					'assets/public/js/public-dist.js': ['assets/public/js/public-dist.js']
-				}
+			public: {
+				options: {
+					sourceMap: true
+				},
+				src: [
+					'assets/public/vendor/**/*.js',
+					'assets/public/js/*.js',
+					'!assets/public/js/public-dist.js'
+				],
+				dest: 'assets/public/js/public-dist.js'
 			}
 		},
 
@@ -179,14 +174,14 @@ module.exports = function (grunt) {
 					domainPath: '/languages/',
 					exclude: ['assets/.*', 'node_modules/.*', 'vendor/.*', 'tests/.*', 'includes/admin/views/system-status.php'],
 					mainFile: 'awesome-support.php',
-					potComments: 'N2Clic Limited',
+					potComments: 'Awesome Support',
 					potFilename: 'awesome-support.pot',
 					potHeaders: {
 						poedit: true,
 						'x-poedit-keywordslist': true,
 						'report-msgid-bugs-to': 'https://github.com/ThemeAvenue/Awesome-Support/issues',
-						'last-translator': 'ThemeAvenue (https://themeavenue.net/)',
-						'language-team': 'ThemeAvenue <hello@themeavenue.net>',
+						'last-translator': 'Awesome Support (https://getawesomesupport.com/)',
+						'language-team': 'Awesome Support <contact@getawesomesupport.com>',
 						'language': 'en_US'
 					},
 					processPot: function (pot, options) {
@@ -254,7 +249,7 @@ module.exports = function (grunt) {
 			},
 			js: {
 				files: ['assets/**/*.js'],
-				tasks: ['concat', 'uglify']
+				tasks: ['uglify']
 			},
 			css: {
 				files: ['assets/**/*.less', 'assets/**/*.css', 'themes/**/*.less'],
@@ -266,12 +261,14 @@ module.exports = function (grunt) {
 
 	require('load-grunt-tasks')(grunt);
 
-	grunt.registerTask('default', ['jshint', 'concat', 'uglify', 'less', 'autoprefixer', 'combine_mq', 'cssmin', 'watch']);
-	grunt.registerTask('build', ['jshint', 'concat', 'uglify', 'less', 'autoprefixer', 'combine_mq', 'cssmin']);
+	grunt.registerTask('default', ['jshint', 'uglify', 'less', 'autoprefixer', 'combine_mq', 'cssmin', 'watch']);
+	grunt.registerTask('build', ['jshint', 'uglify', 'less', 'autoprefixer', 'combine_mq', 'cssmin']);
+	
 	grunt.registerTask('txpull', ['exec:txpull', 'potomo']);
 	grunt.registerTask('txpush', ['makepot', 'exec:txpush']);
 
-	grunt.registerTask('release', ['composer:install', 'txpull', 'compress']);
+
+	grunt.registerTask('release', ['composer:install', 'build', 'compress']);
 	grunt.registerTask('release_patch', ['version::patch', 'release']);
 	grunt.registerTask('release_minor', ['version::minor', 'release']);
 	grunt.registerTask('release_major', ['version::major', 'release']);

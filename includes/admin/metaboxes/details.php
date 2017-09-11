@@ -27,7 +27,8 @@ $ticket_status = get_post_meta( get_the_ID(), '_wpas_status', true );
  * @var string
  * @see admin/class-awesome-support-admin.php
  */
-$action = ( in_array( $ticket_status, array( 'closed', '' ) ) ) ? wpas_get_open_ticket_url( $post->ID ) : wpas_get_close_ticket_url( $post->ID );
+$base_url = add_query_arg( array( 'action' => 'edit', 'post' => $post->ID ), admin_url( 'post.php' ) );
+$action = ( in_array( $ticket_status, array( 'closed', '' ) ) ) ? wpas_do_url( $base_url, 'admin_open_ticket' ) : wpas_do_url( $base_url, 'admin_close_ticket' );
 
 /**
  * Get available statuses.
@@ -37,24 +38,40 @@ $statuses = wpas_get_post_status();
 /* Get post status */
 $post_status = isset( $post ) ? $post->post_status : '';
 
+/* Get the date */
+$date_format = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+$date        = get_the_date( $date_format );
+
 /* Get time */
 if ( isset( $post ) ) {
-	$date = human_time_diff( get_the_time( 'U', $post->ID ), current_time( 'timestamp' ) );
+	$dateago = human_time_diff( get_the_time( 'U', $post->ID ), current_time( 'timestamp' ) );
 }
 ?>
 <div class="wpas-ticket-status submitbox">
-	<p>
-		<strong><?php _e( 'Ticket status:', 'awesome-support' ); ?></strong>
-		<?php if ( 'post-new.php' != $pagenow ):
-			wpas_cf_display_status( '', $post->ID );
+	
+	<?php do_action( 'wpas_backend_ticket_status_content_before', $post->ID ); ?>
+	
+	<div class="wpas-row" id="wpas-statusdate">
+		<div class="wpas-col">
+			<strong><?php _e( 'Status', 'awesome-support' ); ?></strong>
+			<?php if ( 'post-new.php' != $pagenow ):
+				wpas_cf_display_status( '', $post->ID );
 			?>
-		<?php else: ?>
-			<span><?php _x( 'Creating...', 'Ticket creation', 'awesome-support' ); ?></span>
-		<?php endif; ?>
-	</p>
-	<?php if ( isset( $post ) ): ?><p><strong><?php _e( 'Opened:', 'awesome-support' ); ?></strong> <em><?php printf( __( '%s ago', 'awesome-support' ), $date ); ?></em></p><?php endif; ?>
+			<?php else: ?>
+				<span><?php _x( 'Creating...', 'Ticket creation', 'awesome-support' ); ?></span>
+			<?php endif; ?>
+		</div>
+		<div class="wpas-col">
+			<?php if ( isset( $post ) ): ?>
+				<strong><?php echo $date; ?></strong>
+				<em><?php printf( __( '%s ago', 'awesome-support' ), $dateago ); ?></em>
+			<?php endif; ?>
+		</div>
+	</div>
+	<?php do_action( 'wpas_backend_ticket_stakeholders_before', $post->ID ); ?>
+	<?php require( WPAS_PATH . 'includes/admin/metaboxes/stakeholders.php' ); ?>
 	<?php if ( 'open' === get_post_meta( $post->ID, '_wpas_status', true ) ): ?>
-		<label for="wpas-post-status"><strong><?php _e( 'Current state:', 'awesome-support' ); ?></strong></label>
+		<label for="wpas-post-status"><strong><?php _e( 'Current Status', 'awesome-support' ); ?></strong></label>
 		<p>
 			<select id="wpas-post-status" name="post_status_override" style="width: 100%">
 				<?php foreach ( $statuses as $status => $label ):
@@ -64,11 +81,12 @@ if ( isset( $post ) ) {
 				<?php endforeach; ?>
 			</select>
 			<?php if ( isset( $_GET['post'] ) ): ?>
-				<input type="hidden" name="wpas_post_parent" value="<?php echo $_GET['post']; ?>">
+				<input type="hidden" name="wpas_post_parent" value="<?php echo filter_input(INPUT_GET, 'post', FILTER_SANITIZE_STRING); ?>">
 			<?php endif; ?>
 		</p>
 	<?php endif; ?>
-	
+		
+	<?php do_action( 'wpas_backend_ticket_status_before_actions', $post->ID ); ?>
 	<div id="major-publishing-actions">
 		<?php if ( current_user_can( "delete_ticket", $post->ID ) ): ?>
 			<div id="delete-action">
@@ -91,11 +109,11 @@ if ( isset( $post ) ) {
 				<span class="spinner"></span>
 				<?php if ( isset( $_GET['action'] ) && 'edit' === $_GET['action'] ) : ?>
 					<input name="original_publish" type="hidden" id="original_publish" value="<?php esc_attr_e( 'Updating', 'awesome-support' ) ?>" />
-					<?php submit_button( __( 'Update Ticket' ), 'primary button-large', 'publish', false, array( 'accesskey' => 'u' ) ); ?>
+					<?php submit_button( __( 'Update Ticket', 'awesome-support' ), 'primary button-large', 'publish', false, array( 'accesskey' => 'u' ) ); ?>
 				<?php else:
 					if ( current_user_can( 'create_ticket' ) ): ?>
 						<input name="original_publish" type="hidden" id="original_publish" value="<?php esc_attr_e( 'Creating', 'awesome-support' ) ?>" />
-						<?php submit_button( __( 'Open Ticket' ), 'primary button-large', 'publish', false, array( 'accesskey' => 'o' ) ); ?>
+						<?php submit_button( __( 'Open Ticket', 'awesome-support' ), 'primary button-large', 'publish', false, array( 'accesskey' => 'o' ) ); ?>
 						<?php endif;
 				endif; ?>
 			</div>

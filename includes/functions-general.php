@@ -26,12 +26,18 @@ function wpas_get_option( $option, $default = false ) {
  *
  * @param mixed $option The name of the option to update
  * @param mixed $value  The new value for this option
+ * @param bool  $add    Whether or not a new key should be added if $option is not found in the options array
  *
  * @return bool
  */
-function wpas_update_option( $option, $value ) {
+function wpas_update_option( $option, $value, $add = false ) {
 
 	$options = maybe_unserialize( get_option( 'wpas_options', array() ) );
+
+	// Add a new option key if it doesn't yet exist
+	if ( ! array_key_exists( $option, $options ) && true === $add ) {
+		$options[ $option ] = '';
+	}
 
 	if ( ! array_key_exists( $option, $options ) ) {
 		return false;
@@ -48,67 +54,43 @@ function wpas_update_option( $option, $value ) {
 }
 
 /**
- * Add a security nonce.
+ * Get link to (re)open a ticket
  *
- * The function adds a security nonce to URLs
- * with a trigger for plugin custom action.
+ * @param int $ticket_id ID of the ticket ot open
  *
- * @param  string $url URL to nonce
- *
- * @return string)      Nonced URL
- * @since  3.0.0
+ * @return string
  */
-function wpas_nonce_url( $url ) {
-	return add_query_arg( array( 'wpas-nonce' => wp_create_nonce( 'wpas_custom_action' ) ), $url );
-}
-
-/**
- * Check a custom action nonce.
- *
- * @since  3.1.5
- * @param  string $nonce  Nonce to be checked
- * @return boolean        Nonce validity
- */
-function wpas_check_nonce( $nonce ) {
-	return wp_verify_nonce( $nonce, 'wpas_custom_action' );
-}
-
-/**
- * Add custom action and nonce to URL.
- *
- * The function adds a custom action trigger using the wpas-do
- * URL parameter and adds a security nonce for plugin custom actions.
- *
- * @param  string $url    URL to customize
- * @param  string $action Custom action to add
- *
- * @return string         Customized URL
- * @since  3.0.0
- */
-function wpas_url_add_custom_action( $url, $action ) {
-	return wpas_nonce_url( add_query_arg( array( 'wpas-do' => sanitize_text_field( $action ) ), $url ) );
-}
-
-function wpas_get_open_ticket_url( $ticket_id, $action = 'open' ) {
+function wpas_get_open_ticket_url( $ticket_id ) {
 
 	$remove = array( 'post', 'message' );
 	$args   = $_GET;
 
 	foreach ( $remove as $key ) {
 
-		if ( isset( $args[$key] ) ) {
-			unset( $args[$key] );
+		if ( isset( $args[ $key ] ) ) {
+			unset( $args[ $key ] );
 		}
 
 	}
 
 	$args['post'] = intval( $ticket_id );
 
-	return wpas_url_add_custom_action( add_query_arg( $args, admin_url( 'post.php' ) ), $action );
+	return wpas_do_url( add_query_arg( $args, admin_url( 'post.php' ) ), 'admin_open_ticket', array( 'post' => (int) $ticket_id ) );
+
 }
 
+/**
+ * Get link to close a ticket
+ *
+ * @param int $ticket_id
+ *
+ * @return string
+ */
 function wpas_get_close_ticket_url( $ticket_id ) {
-	return wpas_get_open_ticket_url( $ticket_id, 'close' );
+
+	$url = add_query_arg( 'post_type', 'ticket', admin_url( 'edit.php' ) );
+
+	return wpas_do_url( $url, 'admin_close_ticket', array( 'post' => $ticket_id ) );
 }
 
 /**
@@ -177,7 +159,7 @@ function wpas_is_plugin_page( $slug = '' ) {
 	if( ! is_array( $ticket_submit ) ) { $ticket_submit = (array) $ticket_submit; }
 
 	$plugin_post_types     = apply_filters( 'wpas_plugin_post_types',     array( 'ticket' ) );
-	$plugin_admin_pages    = apply_filters( 'wpas_plugin_admin_pages',    array( 'wpas-status', 'wpas-addons', 'wpas-settings' ) );
+	$plugin_admin_pages    = apply_filters( 'wpas_plugin_admin_pages',    array( 'wpas-status', 'wpas-addons', 'wpas-settings', 'wpas-optin' ) );
 	$plugin_frontend_pages = apply_filters( 'wpas_plugin_frontend_pages', array_merge( $ticket_list, $ticket_submit ) );
 
 	/* Check for plugin pages in the admin */
@@ -213,7 +195,7 @@ function wpas_is_plugin_page( $slug = '' ) {
 
 		if ( empty( $post ) ) {
 			$protocol = stripos( $_SERVER['SERVER_PROTOCOL'], 'https' ) === true ? 'https://' : 'http://';
-			$post_id  = url_to_postid( $protocol . $_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI'] );
+			$post_id  = url_to_postid( $protocol . $_SERVER['SERVER_NAME'] . ':' . $_SERVER['SERVER_PORT'] . $_SERVER['REQUEST_URI'] );
 			$post     = get_post( $post_id );
 		}
 
@@ -365,6 +347,41 @@ function wpas_get_ticket_status_state( $post_id ) {
 
 }
 
+/**
+ * Get the ticket state slug.
+ *
+ * Gets the ticket status. If the ticket is closed nothing fancy.
+ * If not, we return the ticket state instead of the "Open" status.
+ *
+ * The difference with wpas_get_ticket_status_state() is that only slugs are returned. No translation or capitalized
+ * terms.
+ *
+ * @since  3.3
+ *
+ * @param  integer $post_id Post ID
+ *
+ * @return string           Ticket status / state
+ */
+function wpas_get_ticket_status_state_slug( $post_id ) {
+
+	$status = wpas_get_ticket_status( $post_id );
+
+	if ( 'closed' === $status ) {
+		return $status;
+	}
+
+	$post          = get_post( $post_id );
+	$post_status   = $post->post_status;
+	$custom_status = wpas_get_post_status();
+
+	if ( ! array_key_exists( $post_status, $custom_status ) ) {
+		return 'open';
+	}
+
+	return $post->post_status;
+
+}
+
 function wpas_get_current_admin_url() {
 
 	global $pagenow;
@@ -468,7 +485,7 @@ function wpas_wrap_li( $entry ) {
 		$entry = wpas_array_to_ul( $entry );
 	}
 
-	$entry = htmlentities( $entry );
+	$entry = wp_kses_post( $entry );
 
 	return "<li>$entry</li>";
 }
@@ -489,8 +506,10 @@ function wpas_array_to_ul( $array ) {
  * Create dropdown of things.
  *
  * @since  3.1.3
- * @param  array $args     Dropdown settings
+ *
+ * @param  array  $args    Dropdown settings
  * @param  string $options Dropdown options
+ *
  * @return string          Dropdown with custom options
  */
 function wpas_dropdown( $args, $options ) {
@@ -502,20 +521,36 @@ function wpas_dropdown( $args, $options ) {
 		'please_select' => false,
 		'select2'       => false,
 		'disabled'      => false,
+		'data_attr'     => array(),
+		'multiple'	=> false,
 	);
 
 	$args = wp_parse_args( $args, $defaults );
 
-	$class = (array) $args['class'];
+	$class           = (array) $args['class'];
+	$data_attributes = array();
 
 	if ( true === $args['select2'] ) {
 		array_push( $class, 'wpas-select2' );
 	}
 
+	// If there are some data attributes we prepare them
+	if ( ! empty( $args['data_attr'] ) ) {
+
+		foreach ( $args['data_attr'] as $attr => $value ) {
+			$data_attributes[] = "data-$attr='$value'";
+		}
+
+		$data_attributes = implode( ' ', $data_attributes );
+
+	}
+	
+	$id = $args['id'];
+
 	/* Start the buffer */
 	ob_start(); ?>
 
-	<select name="<?php echo $args['name']; ?>" <?php if ( !empty( $class ) ) echo 'class="' . implode( ' ' , $class ) . '"'; ?> <?php if ( !empty( $id ) ) echo "id='$id'"; ?> <?php if( true === $args['disabled'] ) { echo 'disabled'; } ?>>
+	<select<?php if ( true === $args['multiple'] ) echo ' multiple' ?> name="<?php echo $args['name']; ?>" <?php if ( !empty( $class ) ) echo 'class="' . implode( ' ' , $class ) . '"'; ?> <?php if ( !empty( $id ) ) echo "id='$id'"; ?> <?php if ( ! empty( $data_attributes ) ): echo $data_attributes; endif ?> <?php if( true === $args['disabled'] ) { echo 'disabled'; } ?>>
 		<?php
 		if ( $args['please_select'] ) {
 			echo '<option value="">' . __( 'Please select', 'awesome-support' ) . '</option>';
@@ -561,11 +596,79 @@ function wpas_tickets_dropdown( $args = array(), $status = '' ) {
 	$options = '';
 
 	foreach ( $tickets as $ticket ) {
-		$options .= "<option value='$ticket->ID'>$ticket->post_title</option>";
+		$options .= "<option value='$ticket->ID' " . selected( $args['selected'], $ticket->ID ) . ">$ticket->post_title</option>";
 	}
 
 	echo wpas_dropdown( wp_parse_args( $args, $defaults ), $options );
 
+}
+
+/**
+ * Generate html markup for drop-downs that pull data from taxonomies
+ *
+ * Example use: echo show_dropdown( 'department', "html_inboxrules_rule_new_dept", "wpas-multi-inbox-config-item wpas-multi-inbox-config-item-select", $new_dept );
+ *
+ * @since 4.0.3
+ *
+ * @param string    $taxonomy       The taxonomy to be used as the dropdown passed as a string parameter
+ * @param string    $field_id       The html id name to be used in the generated markup - passed as a string
+ * @param string    $class          The HTML class string to wrap around the dropdown - passed as a string
+ * @param string    $selected       Returns the item that was selected by the user.  If this has an initial value the selected value in the dropdown will be set to that item.
+ * @param bool      $showcount      A flag to control whether or not to show the taxonomy count in parens next to each item in the dropdown.
+ *
+ * @return string
+ */
+function wpas_show_taxonomy_terms_dropdown( $taxonomy, $field_id, $class, $selected, $showcount = false ) {
+	$categories = get_categories( array( 'taxonomy' => $taxonomy, 'hide_empty' => false ) );
+
+	$select = "<select name='$field_id' id='$field_id' class='$class'>";
+	$select .= "<option value='-1'>Select</option>";
+
+	foreach( $categories as $category ) {
+		$is_selected = (int)$selected === $category->term_id ? ' selected ' : '';
+		
+		$countstr='';
+		if ( true === $showcount ) {
+			$countstr = " (" . $category->count . ") ";
+		}
+		
+		$select .= "<option value='" . $category->term_id . "' " . $is_selected . "' >" . $category->name . $countstr . "</option>";
+	}
+	$select .= "</select>";
+
+	return $select;
+}
+
+
+/**
+ * Generate html markup for a standard html agent dropdown
+ *
+ * @since 4.0.3
+ *
+ * @param string    $field_id       The html id name to be used in the generated markup - passed as a string
+ * @param string    $class          The HTML class string to wrap around the dropdown - passed as a string
+ * @param string	$new_assignee	Returns the item that was selected by the user.  If this has an initial value the selected value in the dropdown will be set to that item.
+ *
+ * Note: We should move this to CORE AS later!
+ */
+function wpas_show_assignee_dropdown_simple( $field_id, $class, $new_assignee = "" ) {
+
+	$args = array(
+		'name' => $field_id,
+		'id' => $field_id,
+		'class' => $class,
+		'exclude' => array(),
+		'selected' => empty($new_assignee) ? false : $new_assignee,		
+		'cap' => 'edit_ticket',
+		'cap_exclude' => '',
+		'agent_fallback' => false,
+		'please_select' => 'Select',
+		'select2' => false,
+		'disabled' => false,
+		'data_attr' => array()
+	);
+
+	echo wpas_users_dropdown( $args );
 }
 
 add_filter( 'locale','wpas_change_locale', 10, 1 );
@@ -720,7 +823,7 @@ function wpas_hierarchical_taxonomy_dropdown_options( $term, $value, $level = 1 
 		$option .= '&angrt; ';
 	}
 
-	$option .= $term->name;
+	$option .= apply_filters( 'wpas_hierarchical_taxonomy_dropdown_options_label', $term->name, $term, $value, $level );
 	?>
 
 	<option value="<?php echo $term->term_id; ?>" <?php if( (int) $value === (int) $term->term_id || $value === $term->slug ) { echo 'selected="selected"'; } ?>><?php echo $option; ?></option>
@@ -843,14 +946,264 @@ function wpas_get_reply_link( $reply_id ) {
 
 	}
 
-	if ( 0 === $position ) {
-		return false;
+	// We have more replies that what's displayed on one page, so let's set a session var to force displaying all replies
+	if ( $position > wpas_get_option( 'replies_per_page', 10 ) ) {
+		WPAS()->session->add( 'force_all_replies', true );
 	}
 
-	$page = ceil( $position / 10 );
-	$base = 1 !== (int) $page ? add_query_arg( 'as-page', $page, get_permalink( $reply->post_parent ) ) : get_permalink( $reply->post_parent );
-	$link = $base . "#reply-$reply_id";
+	$link = get_permalink( $reply->post_parent ) . "#reply-$reply_id";
 
 	return esc_url( $link );
 
+}
+
+add_action( 'wpas_after_template', 'wpas_credit', 10, 3 );
+/**
+ * Display a link to the plugin page.
+ *
+ * @since  3.1.3
+ * @var string $name Template name
+ * @return void
+ */
+function wpas_credit( $name ) {
+
+	if ( ! in_array( $name, array( 'details', 'registration', 'submission', 'list' ) ) ) {
+		return;
+	}
+
+	if ( true === (bool) wpas_get_option( 'credit_link' ) ) {
+		echo '<p class="wpas-credit">Built with Awesome Support,<br> the most versatile <a href="https://wordpress.org/plugins/awesome-support/" target="_blank" title="The best support plugin for WordPress">WordPress Support Plugin</a></p>';
+	}
+
+}
+
+add_filter( 'plugin_locale', 'wpas_change_plugin_locale', 10, 2 );
+/**
+ * Change the plugin locale
+ *
+ * This is used to temporarily change the plugin locale on a site,
+ * mainly for debugging purpose.
+ *
+ * @since 3.2.2
+ *
+ * @param string $locale Current plugin locale
+ * @param string $domain Current plugin domain
+ *
+ * @return string
+ */
+function wpas_change_plugin_locale( $locale, $domain ) {
+
+	if ( 'wpas' !== $domain ) {
+		return $locale;
+	}
+
+	/**
+	 * Custom locale.
+	 *
+	 * The custom locale defined by the URL var $wpas_locale
+	 * is used for debugging purpose. It makes testing language
+	 * files easy without changing the site main language.
+	 * It can also be useful when doing support on a site that's
+	 * not in English.
+	 *
+	 * @since  3.1.5
+	 * @var    string
+	 */
+	$wpas_locale = filter_input( INPUT_GET, 'wpas_locale', FILTER_SANITIZE_STRING );
+
+	if ( ! empty( $wpas_locale ) ) {
+		$locale = $wpas_locale;
+	}
+
+	return $locale;
+
+}
+
+add_filter( 'wpas_logs_handles', 'wpas_default_log_handles', 10, 1 );
+/**
+ * Register default logs handles.
+ *
+ * @since  3.0.2
+ *
+ * @param  array $handles Array of registered log handles
+ *
+ * @return array          Array of registered handles with the default ones added
+ */
+function wpas_default_log_handles( $handles ) {
+	array_push( $handles, 'error' );
+
+	return $handles;
+}
+
+add_filter( 'wp_link_query_args', 'wpas_remove_tinymce_links_internal', 10, 1 );
+/**
+ * Filter the link query arguments to remove completely internal links from the list.
+ *
+ * @since 3.2.0
+ *
+ * @param array $query An array of WP_Query arguments.
+ *
+ * @return array $query
+ */
+function wpas_remove_tinymce_links_internal( $query ) {
+
+	/**
+	 * Getting the post ID this way is quite dirty but it seems to be the only way
+	 * as we are in an Ajax query and the only given parameter is the $query
+	 */
+	$url     = wp_get_referer();
+	$post_id = url_to_postid( $url );
+
+	if ( $post_id === wpas_get_option( 'ticket_submit' ) ) {
+		$query['post_type'] = array( 'none' );
+	}
+
+	return $query;
+
+}
+
+/**
+ * Convert an array to a string of key/value pairs
+ *
+ * This function does not work with multidimensional arrays.
+ *
+ * @since 3.3
+ *
+ * @param array $array The array to convert
+ *
+ * @return string
+ */
+function wpas_array_to_key_value_string( $array ) {
+
+	$pairs = array();
+
+	foreach ( $array as $key => $value ) {
+
+		// Convert boolean values to string
+		if ( is_bool( $value ) ) {
+			$value = $value ? 'true' : false;
+		}
+
+		$pairs[] = "$key='$value'";
+	}
+
+	return implode( ' ', $pairs );
+
+}
+
+/**
+ * Convert an associative array into a key/value pairs string
+ *
+ * The function also takes care of prefixing the attributes with data- if needed.
+ *
+ * @since 3.3
+ *
+ * @param array $array      The array to convert
+ * @param bool  $user_funct Whether or not to check if the value passed is in fact a function to use for getting the
+ *                          actual value
+ *
+ * @return array
+ */
+function wpas_array_to_data_attributes( $array, $user_funct = false ) {
+
+	$clean = array();
+
+	foreach ( $array as $key => $value ) {
+
+		if ( 'data-' !== substr( $key, 0, 5 ) ) {
+			$key = "data-$key";
+		}
+
+		if ( true === $user_funct ) {
+
+			$function = is_array( $value ) ? $value[0] : $value;
+			$args     = array();
+
+			if ( is_array( $value ) ) {
+				$args = $value;
+				unset( $args[0] ); // Remove the function name from the args
+			}
+
+			if ( function_exists( $function ) ) {
+				$value = call_user_func( $function, array_values( $args ) );
+			}
+
+		}
+
+		// This function does not work with multidimensional arrays
+		if ( is_array( $value ) ) {
+			continue;
+		}
+
+		$clean[ $key ] = $value;
+
+	}
+
+	return wpas_array_to_key_value_string( $clean );
+
+}
+
+/**
+ * Dumb wrapper for get_the_time() that passes the desired format for getting a Unix timestamp
+ *
+ * This function is used as a user callback when preparing the front-end tickets list table.
+ *
+ * @see   wpas_get_tickets_list_columns()
+ * @since 3.3
+ * @return string
+ */
+function wpas_get_the_time_timestamp() {
+	return get_the_time( 'U' );
+}
+
+/**
+ * Check if multi agent is enabled
+ * @return boolean
+ */
+function wpas_is_multi_agent_active() {
+	$options = maybe_unserialize( get_option( 'wpas_options', array() ) );
+	
+	if ( isset( $options['multiple_agents_per_ticket'] ) && true === boolval( $options['multiple_agents_per_ticket'] ) ) {
+		return true;
+	}
+	
+	return false;
+}
+
+/**
+ * Check if support priority is active
+ * @return boolean
+ */
+function wpas_is_support_priority_active() {
+	$options = maybe_unserialize( get_option( 'wpas_options', array() ) );
+	
+	if ( isset( $options['support_priority'] ) && true === boolval( $options['support_priority'] ) ) {
+		return true;
+	}
+	
+	return false;
+}
+
+/**
+ * Create a pseduo GUID
+ *
+ * @return string
+ */
+ function wpas_create_pseudo_guid(){
+	 return sprintf('%04X%04X-%04X-%04X-%04X-%04X%04X%04X', mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(16384, 20479), mt_rand(32768, 49151), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535));
+ }
+ 
+
+/**
+ * Create a random MD5 based hash.
+ *
+ * @return string
+ */ 
+ function wpas_random_hash() {
+	
+	$time  = time();
+	$the_hash = md5( $time . (string) random_int(0, getrandmax()) );
+	
+	return $the_hash;
+	
 }

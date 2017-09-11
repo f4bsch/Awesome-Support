@@ -12,95 +12,79 @@ if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
-/* Need access to the roles */
-global $wp_roles;
+// Add nonce
+wp_nonce_field( 'wpas_update_cf', 'wpas_cf', false, true );
 
-/* Add nonce */
-wp_nonce_field( Awesome_Support_Admin::$nonce_action, Awesome_Support_Admin::$nonce_name, false, true );
+// Set post-dependant values
+if ( isset( $post ) && is_a( $post, 'WP_Post' ) && 'auto-draft' !== $post->post_status ) {
 
-/* Issuer metadata */
-$issuer = get_userdata( $post->post_author );
+	// Client
+	$client        = get_userdata( $post->post_author );
+	$client_id     = $client->ID;
+	$client_name   = $client->data->display_name;
+	$client_option = "<option value='$client_id' selected='selected'>$client_name</option>";
+	$client_link   = esc_url( admin_url( add_query_arg( array(
+		'post_type' => 'ticket',
+		'author'    => $client_id
+	), 'edit.php' ) ) );
 
-/* Issuer ID */
-/* Issuer name */
-if ($issuer !== false) {
-    $issuer_id = $issuer->data->ID;
-    $issuer_name = $issuer->data->display_name;
+	// Staff
+	$staff_id = wpas_get_cf_value( 'assignee', get_the_ID() );
+
 } else {
-    $issuer_id = 0;
-    $issuer_name = __( 'User was deleted', 'awesome-support' );
+
+	// Staff
+	$staff_id = get_current_user_id();
+
+	// Client
+	$client_id     = 0;
+	$client_name   = '';
+	$client_link   = '';
+	$client_option = '';
+
 }
 
-/* Issuer tickets link */
-$issuer_tickets = admin_url( add_query_arg( array( 'post_type' => 'ticket', 'author' => $issuer_id ), 'edit.php' ) );
-
-/* Prepare the empty users list */
-$users = array();
-
-/* Get fields values */
-$ccs = wpas_get_cf_value( 'ccs', get_the_ID() );
-
-/* Get ticket assignee */
-$assignee = wpas_get_cf_value( 'assignee', get_the_ID() );
-
-/* List available agents */
-foreach( $wp_roles->roles as $role => $data ) {
-
-	/* Check if current role can edit tickets */
-	if( array_key_exists( 'edit_ticket', $data['capabilities'] ) ) {
-
-		/* Get users with current role */
-		$usrs = new WP_User_Query( array( 'role' => $role ) );
-
-		/* Save users in global array */
-		$users = array_merge( $users, $usrs->get_results() );
-	}
+// Set post-independent vars
+$staff         = get_user_by( 'ID', $staff_id );
+if (! empty( $staff ) ) {
+	$staff_name    = $staff->data->display_name;
 }
 ?>
 <div id="wpas-stakeholders">
-	<label for="wpas-issuer"><strong><?php _e( 'Ticket Creator', 'awesome-support' ); ?></strong></label>
+	<label for="wpas-issuer"><strong data-hint="<?php esc_html_e( 'This user who raised this ticket', 'awesome-support' ); ?>" class="hint-left hint-anim"><?php _e( 'Ticket Creator', 'awesome-support' ); ?></strong></label>
 	<p>
-
 		<?php if ( current_user_can( 'create_ticket' ) ):
 
-			$users_atts = array( 'agent_fallback' => true, 'select2' => true, 'name' => 'post_author_override', 'id' => 'wpas-issuer' );
+			$users_atts = array( 'agent_fallback' => true, 'select2' => true, 'name' => 'post_author_override', 'id' => 'wpas-issuer', 'data_attr' => array( 'capability' => 'create_ticket' ) );
 
 			if ( isset( $post ) ) {
 				$users_atts['selected'] = $post->post_author;
 			}
 
-			wpas_support_users_dropdown( $users_atts );
+			echo wpas_dropdown( $users_atts, $client_option );
 
 		else: ?>
-			<a id="wpas-issuer" href="<?php echo $issuer_tickets; ?>"><?php echo $issuer_name; ?></a></p>
+			<a id="wpas-issuer" href="<?php echo $client_link; ?>"><?php echo $client_name; ?></a>
 		<?php endif; ?>
-
-	<?php if( WPAS_FIELDS_DESC ): ?><p class="description"><?php printf( __( 'This ticket has been raised by the user hereinabove.', 'awesome-support' ), '#' ); ?></p><?php endif; ?>
-	<hr>
-
-	<label for="wpas-assignee"><strong><?php _e( 'Support Staff', 'awesome-support' ); ?></strong></label>
+	</p>
+	<label for="wpas-assignee"><strong data-hint="<?php esc_html_e( 'The agent currently responsible for this ticket', 'awesome-support' ); ?>" class="hint-left hint-anim"><?php _e( 'Support Staff', 'awesome-support' ); ?></strong></label>
 	<p>
 		<?php
 		$staff_atts = array(
-			'cap'      => 'edit_ticket',
-			'name'     => 'wpas_assignee',
-			'id'       => 'wpas-assignee',
-			'disabled' => ! current_user_can( 'assign_ticket' ) ? true : false,
-			'select2'  => true
+			'name'      => 'wpas_assignee',
+			'id'        => 'wpas-assignee',
+			'disabled'  => ! current_user_can( 'assign_ticket' ) ? true : false,
+			'select2'   => true,
+			'data_attr' => array( 'capability' => 'edit_ticket' )
 		);
-
-		if ( isset( $post ) ) {
-			$staff_atts['selected'] = get_post_meta( $post->ID, '_wpas_assignee', true );
+		
+		if (! empty( $staff ) ) {
+			// We have a valid staff id
+			echo wpas_dropdown( $staff_atts, "<option value='$staff_id' selected='selected'>$staff_name</option>" );		
+		} else {
+			// Oops - no valid staff id...
+			echo wpas_dropdown( $staff_atts, "<option value='$staff_id'> " );					
 		}
-
-		echo wpas_users_dropdown( $staff_atts );
 		?>
 	</p>
-	<?php if( WPAS_FIELDS_DESC ): ?><p class="description"><?php printf( __( 'The above agent is currently responsible for this ticket.', 'awesome-support' ), '#' ); ?></p><?php endif; ?>
-	
-	<!-- <hr>
-
-	<label for="wpas-ccs"><strong><?php _e( 'CCs', 'awesome-support' ); ?></strong></label>
-	<p><input type="text" id="wpas-ccs" name="wpas_ccs" value="<?php echo $ccs; ?>" style="width:100%" /></p>
-	<?php if( WPAS_FIELDS_DESC ): ?><p class="description"><?php printf( __( 'If you want to send a copy of the e-mails to another person, add the address(es) separated by a comma.', 'awesome-support' ), '#' ); ?></p><?php endif; ?> -->
 </div>

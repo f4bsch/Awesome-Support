@@ -5,8 +5,8 @@
  * @package   Awesome Support/Session
  * @author    Julien Liabeuf <julien@liabeuf.fr>
  * @license   GPL-2.0+
- * @link      http://themeavenue.net
- * @copyright 2014 ThemeAvenue
+ * @link      https://getawesomesupport.com
+ * @copyright 2014-2017 AwesomeSupport
  */
 
 /* Exit if accessed directly */
@@ -29,31 +29,20 @@ class WPAS_Session {
 	 */
 	private $session;
 
-	/**
-	 * Session prefix used with PHP sessions
-	 *
-	 * @since 3.2
-	 * @var string
-	 */
-	private $prefix;
-
 	public function __construct() {
 
-		if ( $this->can_php_session() ) {
 
-			$this->maybe_start_session();
-
-			add_action( 'plugins_loaded', array( $this, 'init' ) );
-
-		} else {
-
-			if ( ! defined( 'WP_SESSION_COOKIE' ) ) {
-				define( 'WP_SESSION_COOKIE', '_wpas_session' );
-			}
-
-			require_once( WPAS_PATH . 'vendor/ericmann/wp-session-manager/wp-session-manager.php' );
-
+		if ( ! defined( 'WP_SESSION_COOKIE' ) ) {
+			define( 'WP_SESSION_COOKIE', '_wpas_session' );
 		}
+
+		require_once( WPAS_PATH . 'vendor/ericmann/wp-session-manager/wp-session-manager.php' );
+		
+		add_filter( 'wp_session_cookie_secure',   array( $this, 'wpas_set_cookie_secure_flag' ), 10, 1 );	// Set the SECURE flag on the cookie
+		add_filter( 'wp_session_cookie_httponly', array( $this, 'wpas_set_http_only_flag' ), 10, 1 );	// Set the SECURE flag on the cookie
+
+		// Instantiate the session
+		$this->init();
 
 	}
 
@@ -64,58 +53,7 @@ class WPAS_Session {
 	 * @return void
 	 */
 	public function init() {
-
-		if ( $this->can_php_session() ) {
-
-			$key = 'wpas' . $this->prefix;
-
-			// Set the session if necessary
-			if ( ! array_key_exists( $key, $_SESSION ) ) {
-				$_SESSION[ $key ] = array();
-			}
-
-			$this->session = $_SESSION[ $key ];
-
-		} else {
-			$this->session = WP_Session::get_instance();
-		}
-
-	}
-
-	/**
-	 * Check if server supports PHP sessions
-	 *
-	 * @since 3.2
-	 * @return bool
-	 */
-	public function can_php_session() {
-
-		// Check if the server supports PHP sessions
-		if ( function_exists( 'session_start' ) && ! ini_get( 'safe_mode' ) ) {
-			return true;
-		} else {
-			return false;
-		}
-
-	}
-
-	/**
-	 * Update the PHP session when internal session changes
-	 *
-	 * @since 3.2
-	 * @return void
-	 */
-	protected function update_php_session() {
-
-		$key = 'wpas' . $this->prefix;
-
-		// Set the session if necessary
-		if ( ! array_key_exists( $key, $_SESSION ) ) {
-			$_SESSION[ $key ] = array();
-		}
-
-		$_SESSION[ $key ] = $this->session;
-
+		$this->session = WP_Session::get_instance();
 	}
 
 	/**
@@ -134,7 +72,7 @@ class WPAS_Session {
 		$key   = sanitize_text_field( $key );
 		$value = $this->sanitize( $value );
 
-		if ( array_key_exists( $key, $this->session ) && true === $add ) {
+		if ( true === $this->session->offsetExists( $key ) && true === $add ) {
 
 			$old = $this->get( $key );
 
@@ -147,10 +85,6 @@ class WPAS_Session {
 
 		} else {
 			$this->session[ $key ] = $value;
-		}
-
-		if ( $this->can_php_session() ) {
-			$this->update_php_session();
 		}
 
 	}
@@ -170,7 +104,7 @@ class WPAS_Session {
 		$value = $default;
 		$key   = sanitize_text_field( $key );
 
-		if ( array_key_exists( $key, $this->session ) ) {
+		if ( true === $this->session->offsetExists( $key ) ) {
 			$value = $this->session[ $key ];
 		}
 
@@ -202,13 +136,9 @@ class WPAS_Session {
 		$key     = sanitize_text_field( $key );
 		$cleaned = false;
 
-		if ( array_key_exists( $key, $this->session ) ) {
+		if ( true === $this->session->offsetExists( $key ) ) {
 			unset( $this->session[ $key ] );
 			$cleaned = true;
-		}
-
-		if ( $this->can_php_session() ) {
-			$this->update_php_session();
 		}
 
 		return $cleaned;
@@ -222,13 +152,7 @@ class WPAS_Session {
 	 * @return void
 	 */
 	public function reset() {
-
 		$this->session = array();
-
-		if ( $this->can_php_session() ) {
-			$this->update_php_session();
-		}
-
 	}
 
 	/**
@@ -249,17 +173,44 @@ class WPAS_Session {
 		return $value;
 
 	}
-
+	
+	
 	/**
-	 * Maybe start the session
+	 * Set the secure flag on the cookie
 	 *
-	 * @since 3.2
-	 * @return void
+	 * Filter: wp_session_cookie_secure
+	 *
+	 * @param boolean $secure_flag
+	 *
+	 * @since 4.0.4
+	 *
+	 * @return boolean flag - true or false, default false
 	 */
-	public function maybe_start_session() {
-		if ( ! session_id() && ! headers_sent() ) {
-			session_start();
-		}
+	public function wpas_set_cookie_secure_flag ( $secure_flag ) {
+		
+		$secure_flag = boolval( wpas_get_option( 'secure_cookies', false) );
+		
+		return $secure_flag;
+	}
+	
+	/**
+	 * Set the httponly flag on the cookie
+	 *
+	 * Filter: wp_session_cookie_httponly
+	 *
+	 * @param boolean $http_only_flag
+	 *
+	 * @since 4.0.4
+	 *
+	 * @return boolean flag - true or false, default false
+	 */
+	public function wpas_set_http_only_flag ( $http_only_flag ) {
+		
+		$http_only_flag = boolval( wpas_get_option( 'cookie_http_only', false) );
+		
+		return $http_only_flag;
 	}
 
+	
+	
 }

@@ -1,10 +1,10 @@
 <?php
 /**
  * @package   Awesome Support/Admin/Reply
- * @author    ThemeAvenue <web@themeavenue.net>
+ * @author    AwesomeSupport <contact@getawesomesupport.com>
  * @license   GPL-2.0+
- * @link      http://themeavenue.net
- * @copyright 2014 ThemeAvenue
+ * @link      https://getawesomesupport.com
+ * @copyright 2014-2017 AwesomeSupport
  */
 
 // If this file is called directly, abort.
@@ -25,18 +25,18 @@ if ( ! defined( 'WPINC' ) ) {
 	 */
 	echo apply_filters( 'wpas_write_reply_title_admin', sprintf( esc_html_x( 'Write a reply to %s', 'Title of the reply editor in the back-end', 'awesome-support' ), '&laquo;' . esc_attr( get_the_title( $post->ID ) ) . '&raquo;' ), $post ); ?>
 </h2>
-<?php
-/**
- * Load the WordPress WYSIWYG with minimal options
- */
-/* The edition textarea */
-wp_editor( '', 'wpas_reply', array(
-				'media_buttons' => false,
-				'teeny'         => true,
-				'quicktags'     => true,
+<div>
+	<?php
+	// Load the WordPress WYSIWYG with minimal options
+	wp_editor( apply_filters( 'wpas_admin_reply_form_reply_content', '' ), 'wpas_reply', apply_filters( 'wpas_admin_reply_form_args', array(
+			'media_buttons' => false,
+			'teeny'         => true,
+			'quicktags'     => true,
 		)
-);
-
+	) );
+	?>
+</div>
+<?php
 /**
  * Add a hook after the WYSIWYG editor
  * for tickets reply.
@@ -82,6 +82,8 @@ wp_nonce_field( 'reply_ticket', 'wpas_reply_ticket', false, true );
 				<strong><?php _e( 'After Replying', 'awesome-support' ); ?></strong><br>
 				<label for="back_to_list"><input type="radio" id="back_to_list" name="where_after" value="back_to_list" checked="checked"> <?php _e( 'Back to list', 'awesome-support' ); ?></label>
 				<label for="stay_here"><input type="radio" id="stay_here" name="where_after" value="stay_here"> <?php _e( 'Stay on ticket screen', 'awesome-support' ); ?></label>
+				<label for="next_ticket"><input type="radio" id="next_ticket" name="where_after" value="next_ticket"> <?php _e( 'Go to the next ticket', 'awesome-support' ); ?></label>
+				<label for="previous_ticket"><input type="radio" id="previous_ticket" name="where_after" value="previous_ticket"> <?php _e( 'Go to the previous ticket', 'awesome-support' ); ?></label>
 			</fieldset>
 			<button type="submit" name="wpas_do" class="button-primary wpas_btn_reply" value="reply"><?php _e( 'Reply', 'awesome-support' ); ?></button>
 			<?php break;

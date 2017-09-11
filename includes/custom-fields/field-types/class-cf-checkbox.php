@@ -8,6 +8,14 @@ class WPAS_CF_Checkbox extends WPAS_Custom_Field {
 
 	public $options = array();
 
+	public function __construct( $field_id, $field ) {
+
+		// Call parent constructor
+		parent::__construct( $field_id, $field );
+
+	}
+
+
 	/**
 	 * Return the field markup for the front-end.
 	 *
@@ -19,7 +27,7 @@ class WPAS_CF_Checkbox extends WPAS_Custom_Field {
 			return '<!-- No options declared -->';
 		}
 
-		$output        = '<legend class="wpas-label-checkbox">{{label}}</legend>';
+		$output        = '';
 		$name_attr     = $this->get_field_id() . '[]';
 		$this->options = $this->field_args['options'];
 		$values        = $this->populate();

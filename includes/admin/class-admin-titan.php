@@ -5,8 +5,8 @@
  * @package   Admin/Titan
  * @author    Julien Liabeuf <julien@liabeuf.fr>
  * @license   GPL-2.0+
- * @link      http://themeavenue.net
- * @copyright 2014 ThemeAvenue
+ * @link      https://getawesomesupport.com
+ * @copyright 2014-2017 AwesomeSupport
  */
 
 class WPAS_Titan {
@@ -54,10 +54,9 @@ class WPAS_Titan {
 		 
 		// Don't do anything when we're activating a plugin to prevent errors
 		// on redeclaring Titan classes
-		if ( ! empty( $_GET['action'] ) && ! empty( $_GET['plugin'] ) ) {
-		    if ( $_GET['action'] == 'activate' ) {
-		        return;
-		    }
+		if( 'activate' === filter_input(INPUT_GET, 'action', FILTER_SANITIZE_STRING )
+			&& ! empty( filter_input( INPUT_GET, 'plugin' ) ) ) {
+				return;
 		}
 
 		// Check if the framework plugin is activated
@@ -100,7 +99,7 @@ class WPAS_Titan {
 		 * @var (array)
 		 * @see  admin/includes/settings.php
 		 */
-		$options = apply_filters( 'wpas_plugin_settings', array() );
+		$options = wpas_get_settings();
 
 		/* Parse options */
 		foreach ( $options as $tab => $content ) {
@@ -115,7 +114,18 @@ class WPAS_Titan {
 
 			/* Add all options to current tab */
 			foreach( $content['options'] as $option ) {
+
 				$tab->createOption( $option );
+
+				if ( isset( $option['type'] ) && 'heading' === $option['type'] && isset( $option['options'] ) && is_array( $option['options'] ) ) {
+
+					foreach ( $option['options'] as $opt ) {
+						$tab->createOption( $opt );
+					}
+
+				}
+
+
 			}
 
 			$tab->createOption( array( 'type' => 'save', ) );

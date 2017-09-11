@@ -13,14 +13,17 @@ class WPAS_CF_Select extends WPAS_Custom_Field {
 		/* Call the parent constructor */
 		parent::__construct( $field_id, $field );
 
-		/* Set the additional parameters */
-		if ( ! isset( $this->field_args['multiple'] ) ) {
-			$this->field_args['multiple'] = false;
-		}
+		// Set the additional parameters
+		$this->field_args['multiple'] = isset( $this->field_args['multiple'] ) ? (bool) $this->field_args['multiple'] : false;
+		$this->field_args['select2']  = isset( $this->field_args['select2'] ) ? (bool) $this->field_args['select2'] : false;
 
 		/* Change the field name if multiple upload is enabled */
 		if ( true === $this->field_args['multiple'] ) {
 			add_filter( 'wpas_cf_field_atts', array( $this, 'edit_field_atts' ), 10, 3 );
+		}
+
+		if ( true === $this->field_args['select2'] ) {
+			add_filter( 'wpas_cf_field_class', array( $this, 'add_select2_class' ), 10, 2 );
 		}
 
 	}
@@ -70,7 +73,15 @@ class WPAS_CF_Select extends WPAS_Custom_Field {
 	 * doesn't have the capability to edit the field.
 	 */
 	public function display_no_edit() {
-		return sprintf( '<div class="wpas-cf-noedit-wrapper"><div id="%s-label" class="wpas-cf-label">%s</div><div id="%s-value" class="wpas-cf-value">%s</div></div>', $this->get_field_id(), $this->get_field_title(), $this->get_field_id(), $this->get_field_value() );
+
+		$value = $this->get_field_value();
+		$label = $value;
+
+		if ( array_key_exists( $value, $this->field_args['options'] ) ) {
+			$label = $this->field_args['options'][ $value ];
+		}
+
+		return sprintf( '<div class="wpas-cf-noedit-wrapper"><div id="%s-label" class="wpas-cf-label">%s</div><div id="%s-value" class="wpas-cf-value">%s</div></div>', $this->get_field_id(), $this->get_field_title(), $this->get_field_id(), $label );
 	}
 
 	/**
@@ -103,6 +114,32 @@ class WPAS_CF_Select extends WPAS_Custom_Field {
 		}
 
 		return $atts;
+
+	}
+
+	/**
+	 * Add the select2 class to the input
+	 *
+	 * @since 3.3
+	 *
+	 * @param array $classes Input classes
+	 * @param array $field   Array of params of the field being processed
+	 *
+	 * @return array
+	 */
+	public function add_select2_class( $classes, $field ) {
+
+		if ( $field['name'] !== $this->field_id ) {
+			return $classes;
+		}
+
+		if ( true !== $this->field_args['select2'] ) {
+			return $classes;
+		}
+
+		$classes[] = 'wpas-select2';
+
+		return $classes;
 
 	}
 
